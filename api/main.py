@@ -97,7 +97,7 @@ async def verify_api_key(x_api_key: str = Header(...), db: Session = Depends(get
 
 @app.on_event("startup")
 async def startup():
-    await init_db()
+    init_db()
 
 @app.get("/")
 async def root():

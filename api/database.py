@@ -4,14 +4,39 @@ from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 import os
 
-# Use /data for Railway volume persistence, fallback to local
-DB_PATH = "/data/molt_chess.db" if os.path.isdir("/data") else "./molt_chess.db"
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DB_PATH}")
+# Database URL configuration
+# Railway Postgres sets DATABASE_URL automatically
+# Falls back to SQLite for local development
+def get_database_url():
+    db_url = os.getenv("DATABASE_URL")
+    
+    if db_url:
+        # Railway Postgres uses postgres:// but SQLAlchemy 2.0 needs postgresql://
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        return db_url
+    
+    # Local fallback - SQLite
+    db_path = "/data/molt_chess.db" if os.path.isdir("/data") else "./molt_chess.db"
+    return f"sqlite:///{db_path}"
 
-# For sync operations (SQLite)
-sync_engine = create_engine(DATABASE_URL.replace("+aiosqlite", ""), connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+DATABASE_URL = get_database_url()
+IS_POSTGRES = DATABASE_URL.startswith("postgresql://")
 
+# Create engine with appropriate settings
+if IS_POSTGRES:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Check connection health
+        pool_recycle=300,    # Recycle connections every 5 min
+    )
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False}  # SQLite specific
+    )
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 class Agent(Base):
@@ -60,10 +85,13 @@ class MatchmakingQueue(Base):
     agent_id = Column(Integer, ForeignKey("agents.id"), unique=True, nullable=False)
     joined_at = Column(DateTime, default=datetime.utcnow)
 
-async def init_db():
-    Base.metadata.create_all(bind=sync_engine)
+def init_db():
+    """Create all tables. Safe to call multiple times."""
+    Base.metadata.create_all(bind=engine)
+    print(f"Database initialized: {'PostgreSQL' if IS_POSTGRES else 'SQLite'}")
 
 def get_db():
+    """Dependency for FastAPI routes."""
     db = SessionLocal()
     try:
         yield db
