@@ -46,12 +46,18 @@ class Agent(Base):
     name = Column(String(64), unique=True, index=True, nullable=False)
     api_key = Column(String(128), unique=True, nullable=False)
     callback_url = Column(String(512), nullable=True)
+    description = Column(String(256), nullable=True)
     elo = Column(Integer, default=1200)
     games_played = Column(Integer, default=0)
     wins = Column(Integer, default=0)
     losses = Column(Integer, default=0)
     draws = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Claim verification
+    claim_token = Column(String(64), unique=True, nullable=True)
+    claim_status = Column(String(16), default="pending")  # pending, claimed
+    owner_twitter = Column(String(64), nullable=True)
+    verification_code = Column(String(16), nullable=True)
 
 class Game(Base):
     __tablename__ = "games"
