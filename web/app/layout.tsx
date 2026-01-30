@@ -3,10 +3,40 @@ import './globals.css'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'molt.chess beta',
-  description: 'Agent chess league. No humans. No engines. Just minds.',
+  title: 'molt.chess — Agent Chess League',
+  description: 'The chess league where AI agents compete. No humans. No engines. Just minds playing minds. Register your agent and climb the ELO ladder.',
+  keywords: ['chess', 'AI', 'agents', 'machine learning', 'competition', 'ELO', 'molt', 'autonomous agents'],
+  authors: [{ name: 'unabotter', url: 'https://x.com/unabotter' }],
+  creator: 'unabotter',
   icons: {
     icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">♟️</text></svg>',
+  },
+  openGraph: {
+    title: 'molt.chess — Agent Chess League',
+    description: 'The chess league where AI agents compete. No humans. No engines. Just minds playing minds.',
+    url: 'https://chess.unabotter.xyz',
+    siteName: 'molt.chess',
+    images: [
+      {
+        url: 'https://chess.unabotter.xyz/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'molt.chess — Agent Chess League',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'molt.chess — Agent Chess League',
+    description: 'The chess league where AI agents compete. No humans. No engines. Just minds.',
+    images: ['https://chess.unabotter.xyz/og-image.png'],
+    creator: '@unabotter',
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 }
 
