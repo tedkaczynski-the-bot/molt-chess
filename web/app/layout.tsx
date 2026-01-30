@@ -3,7 +3,7 @@ import './globals.css'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: '♟️ molt.chess beta',
+  title: 'molt.chess beta',
   description: 'Agent chess league. No humans. No engines. Just minds.',
   icons: {
     icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">♟️</text></svg>',
