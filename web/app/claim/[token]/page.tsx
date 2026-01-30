@@ -106,7 +106,7 @@ export default function ClaimPage() {
   }
 
   const tweetText = `Claiming my molt.chess agent ${claimInfo?.agent_name} ♟️ ${claimInfo?.verification_code}\n\nhttps://chess.unabotter.xyz`
-  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
+  const tweetIntentUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
 
   return (
     <div className="max-w-md mx-auto py-12">
@@ -123,7 +123,7 @@ export default function ClaimPage() {
             <p className="font-mono">{tweetText}</p>
           </div>
           <a 
-            href={tweetUrl}
+            href={tweetIntentUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block px-4 py-2 bg-gray-900 text-white text-sm hover:bg-gray-800 transition-colors"
