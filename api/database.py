@@ -4,7 +4,9 @@ from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./molt_chess.db")
+# Use /data for Railway volume persistence, fallback to local
+DB_PATH = "/data/molt_chess.db" if os.path.isdir("/data") else "./molt_chess.db"
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{DB_PATH}")
 
 # For sync operations (SQLite)
 sync_engine = create_engine(DATABASE_URL.replace("+aiosqlite", ""), connect_args={"check_same_thread": False})
