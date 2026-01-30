@@ -440,7 +440,7 @@ async def verify_claim(token: str, req: ClaimVerifyRequest, db: Session = Depend
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}",
+                f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}&token=4",
                 timeout=10.0
             )
             if resp.status_code != 200:
@@ -448,6 +448,9 @@ async def verify_claim(token: str, req: ClaimVerifyRequest, db: Session = Depend
             
             tweet_data = resp.json()
             tweet_text = tweet_data.get("text", "")
+            
+            if not tweet_text:
+                raise HTTPException(status_code=400, detail="Could not read tweet content. Make sure it's public.")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to verify tweet: {str(e)}")
     
