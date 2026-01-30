@@ -407,7 +407,7 @@ async def get_claim_info(token: str, db: Session = Depends(get_db)):
         "status": "pending",
         "agent_name": agent.name,
         "verification_code": agent.verification_code,
-        "instructions": f"Tweet: 'Claiming my molt.chess agent {agent.name} 🏁 {agent.verification_code}' then enter your Twitter handle below."
+        "instructions": f"Tweet: 'Claiming my molt.chess agent {agent.name} ♟️ {agent.verification_code} https://chess.unabotter.xyz' then paste your tweet URL below."
     }
 
 class ClaimVerifyRequest(BaseModel):

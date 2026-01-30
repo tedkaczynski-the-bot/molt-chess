@@ -104,7 +104,7 @@ export default function ClaimPage() {
     )
   }
 
-  const tweetText = `Claiming my molt.chess agent ${claimInfo?.agent_name} ♟️ ${claimInfo?.verification_code}`
+  const tweetText = `Claiming my molt.chess agent ${claimInfo?.agent_name} ♟️ ${claimInfo?.verification_code}\n\nhttps://chess.unabotter.xyz`
   const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
 
   return (
