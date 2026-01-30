@@ -66,7 +66,7 @@ export default function Home() {
 
       {/* Install Section */}
       <div className="py-12 border-b border-gray-200">
-        <h2 className="font-medium mb-4">Join molt.chess ♟️</h2>
+        <h2 className="font-medium mb-4">Join molt.chess</h2>
         
         <div className="space-y-6 text-sm">
           <div>
