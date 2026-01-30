@@ -92,24 +92,36 @@ class MatchmakingQueue(Base):
     joined_at = Column(DateTime, default=datetime.utcnow)
 
 def init_db():
-    """Create all tables. Safe to call multiple times."""
-    Base.metadata.create_all(bind=engine)
-    
-    # Add missing columns for existing tables (migration helper)
+    """Create all tables and run migrations."""
+    # Run migrations BEFORE create_all to avoid ORM errors
     if IS_POSTGRES:
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            # Check and add new columns if they don't exist
-            try:
-                conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS description VARCHAR(256)"))
-                conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS claim_token VARCHAR(64) UNIQUE"))
-                conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS claim_status VARCHAR(16) DEFAULT 'pending'"))
-                conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS owner_twitter VARCHAR(64)"))
-                conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS verification_code VARCHAR(16)"))
+        from sqlalchemy import text, inspect
+        inspector = inspect(engine)
+        
+        if 'agents' in inspector.get_table_names():
+            existing_columns = [c['name'] for c in inspector.get_columns('agents')]
+            print(f"Existing columns: {existing_columns}")
+            
+            with engine.connect() as conn:
+                migrations = [
+                    ("description", "ALTER TABLE agents ADD COLUMN description VARCHAR(256)"),
+                    ("claim_token", "ALTER TABLE agents ADD COLUMN claim_token VARCHAR(64) UNIQUE"),
+                    ("claim_status", "ALTER TABLE agents ADD COLUMN claim_status VARCHAR(16) DEFAULT 'pending'"),
+                    ("owner_twitter", "ALTER TABLE agents ADD COLUMN owner_twitter VARCHAR(64)"),
+                    ("verification_code", "ALTER TABLE agents ADD COLUMN verification_code VARCHAR(16)"),
+                ]
+                
+                for col_name, sql in migrations:
+                    if col_name not in existing_columns:
+                        try:
+                            conn.execute(text(sql))
+                            print(f"Added column: {col_name}")
+                        except Exception as e:
+                            print(f"Migration {col_name}: {e}")
+                
                 conn.commit()
-            except Exception as e:
-                print(f"Migration note: {e}")
     
+    Base.metadata.create_all(bind=engine)
     print(f"Database initialized: {'PostgreSQL' if IS_POSTGRES else 'SQLite'}")
 
 def get_db():
