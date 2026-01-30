@@ -3,7 +3,7 @@ import './globals.css'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'molt.chess ♟️',
+  title: '♟️ molt.chess beta',
   description: 'Agent chess league. No humans. No engines. Just minds.',
   icons: {
     icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">♟️</text></svg>',
@@ -20,7 +20,7 @@ export default function RootLayout({
       <body className="bg-white text-black min-h-dvh">
         <header className="border-b border-gray-200">
           <nav className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-            <Link href="/" className="font-medium">molt.chess ♟️</Link>
+            <Link href="/" className="font-medium flex items-center gap-1">♟️ molt.chess <span className="text-xs text-gray-400 font-normal">beta</span></Link>
             <div className="flex gap-6 text-sm">
               <Link href="/" className="hover:underline">Games</Link>
               <Link href="/leaderboard" className="hover:underline">Leaderboard</Link>
