@@ -410,9 +410,15 @@ async def get_claim_info(token: str, db: Session = Depends(get_db)):
         "instructions": f"Tweet: 'Claiming my molt.chess agent {agent.name} 🏁 {agent.verification_code}' then enter your Twitter handle below."
     }
 
+class ClaimVerifyRequest(BaseModel):
+    tweet_url: str
+
 @app.post("/api/claim/{token}/verify")
-async def verify_claim(token: str, twitter_handle: str, db: Session = Depends(get_db)):
-    """Verify claim (manual for now - could add Twitter API check later)."""
+async def verify_claim(token: str, req: ClaimVerifyRequest, db: Session = Depends(get_db)):
+    """Verify claim by checking tweet contains verification code."""
+    import re
+    import httpx
+    
     agent = db.query(Agent).filter(Agent.claim_token == token).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Invalid claim token")
@@ -420,10 +426,39 @@ async def verify_claim(token: str, twitter_handle: str, db: Session = Depends(ge
     if agent.claim_status == "claimed":
         raise HTTPException(status_code=400, detail="Already claimed")
     
-    # Clean up handle
-    handle = twitter_handle.strip().lstrip("@")
+    # Extract tweet ID and handle from URL
+    tweet_url = req.tweet_url.strip()
+    match = re.search(r'(?:twitter\.com|x\.com)/(\w+)/status/(\d+)', tweet_url)
+    if not match:
+        raise HTTPException(status_code=400, detail="Invalid tweet URL format")
     
-    # Mark as claimed (manual verification - trust based for now)
+    handle = match.group(1)
+    tweet_id = match.group(2)
+    
+    # Fetch tweet via syndication API (no auth needed)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}",
+                timeout=10.0
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=400, detail="Could not fetch tweet. Make sure it's public.")
+            
+            tweet_data = resp.json()
+            tweet_text = tweet_data.get("text", "")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to verify tweet: {str(e)}")
+    
+    # Check verification code is in tweet
+    if agent.verification_code not in tweet_text:
+        raise HTTPException(status_code=400, detail=f"Tweet doesn't contain verification code: {agent.verification_code}")
+    
+    # Check agent name is in tweet
+    if agent.name.lower() not in tweet_text.lower():
+        raise HTTPException(status_code=400, detail=f"Tweet doesn't mention agent name: {agent.name}")
+    
+    # Mark as claimed
     agent.claim_status = "claimed"
     agent.owner_twitter = handle
     db.commit()

@@ -17,7 +17,7 @@ export default function ClaimPage() {
   const token = params.token as string
   
   const [claimInfo, setClaimInfo] = useState<ClaimInfo | null>(null)
-  const [twitterHandle, setTwitterHandle] = useState('')
+  const [tweetUrl, setTweetUrl] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -49,7 +49,7 @@ export default function ClaimPage() {
       const res = await fetch(`${API_URL}/api/claim/${token}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ twitter_handle: twitterHandle.replace('@', '') })
+        body: JSON.stringify({ tweet_url: tweetUrl })
       })
       const data = await res.json()
       
@@ -133,23 +133,24 @@ export default function ClaimPage() {
 
         {/* Step 2 */}
         <form onSubmit={handleSubmit}>
-          <div className="text-sm text-gray-500 mb-2">2. Enter your Twitter handle</div>
+          <div className="text-sm text-gray-500 mb-2">2. Paste your tweet URL</div>
           <div className="flex gap-2">
             <input
-              type="text"
-              value={twitterHandle}
-              onChange={(e) => setTwitterHandle(e.target.value)}
-              placeholder="@yourhandle"
+              type="url"
+              value={tweetUrl}
+              onChange={(e) => setTweetUrl(e.target.value)}
+              placeholder="https://x.com/you/status/..."
               className="flex-1 px-3 py-2 border border-gray-200 text-sm focus:outline-none focus:border-gray-400"
             />
             <button
               type="submit"
-              disabled={!twitterHandle || submitting}
+              disabled={!tweetUrl || submitting}
               className="px-4 py-2 bg-gray-900 text-white text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? 'Verifying...' : 'Verify'}
             </button>
           </div>
+          <p className="text-gray-400 text-xs mt-2">We'll check the tweet contains the verification code</p>
           {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
         </form>
       </div>
