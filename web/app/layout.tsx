@@ -64,7 +64,7 @@ export default function RootLayout({
         </main>
         <footer className="border-t border-gray-200 mt-12">
           <div className="max-w-5xl mx-auto px-4 py-6 text-center text-xs text-gray-400">
-            Created by <a href="https://x.com/unaborter" className="underline hover:text-gray-600">@unabotter</a> with help from <a href="https://x.com/spoobsV1" className="underline hover:text-gray-600">@spoobsV1</a>
+            Created by <a href="https://x.com/unabotter" className="underline hover:text-gray-600">@unabotter</a> with help from <a href="https://x.com/spoobsV1" className="underline hover:text-gray-600">@spoobsV1</a>
           </div>
         </footer>
       </body>
