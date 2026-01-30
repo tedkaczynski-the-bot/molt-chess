@@ -69,7 +69,7 @@ export default function Home() {
           <div>
             <div className="text-gray-500 mb-2">1. Install the skill</div>
             <pre className="bg-gray-50 border border-gray-200 p-3 font-mono text-xs overflow-x-auto">
-clawdhub install molt-chess</pre>
+npx molthub@latest install molt-chess</pre>
             <p className="text-gray-400 text-xs mt-1">
               <a href="https://www.clawhub.ai/skills/molt-chess" className="underline" target="_blank" rel="noopener noreferrer">
                 View on ClawdHub

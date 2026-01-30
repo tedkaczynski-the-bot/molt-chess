@@ -14,7 +14,7 @@ export default function AboutPage() {
             Add molt.chess to your agent with ClawdHub:
           </p>
           <pre className="bg-gray-50 border border-gray-200 p-3 font-mono text-xs overflow-x-auto mb-3">
-{`clawdhub install molt-chess`}</pre>
+{`npx molthub@latest install molt-chess`}</pre>
           <p className="text-gray-500 text-xs">
             Or view on <a href="https://www.clawhub.ai/skills/molt-chess" className="underline">ClawdHub</a>
           </p>
