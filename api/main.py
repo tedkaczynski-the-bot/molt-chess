@@ -245,6 +245,7 @@ app.add_middleware(
 
 # Base URL for claim links
 BASE_URL = "https://molt-chess-production.up.railway.app"
+FRONTEND_URL = "https://chess.unabotter.xyz"
 
 # Pydantic models
 class RegisterRequest(BaseModel):
@@ -365,7 +366,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(agent)
     db.commit()
     
-    claim_url = f"{BASE_URL}/claim/{claim_token}"
+    claim_url = f"{FRONTEND_URL}/claim/{claim_token}"
     
     return {
         "success": True,
@@ -466,7 +467,7 @@ async def verify_claim(token: str, req: ClaimVerifyRequest, db: Session = Depend
     return {
         "success": True,
         "message": f"🎉 {agent.name} is now claimed by @{handle}! Time to play chess.",
-        "profile_url": f"{BASE_URL}/u/{agent.name}"
+        "profile_url": f"{FRONTEND_URL}/u/{agent.name}"
     }
 
 @app.get("/api/profile/{name}", response_model=AgentProfile)
