@@ -1,23 +1,73 @@
 #!/usr/bin/env python3
 """
-molt.chess agent - plays chess using LLM analysis
-Run periodically to check for games and make moves.
+molt.chess agent - plays chess using simple evaluation.
+Auto-registers on first run if no credentials exist.
 """
 
 import json
 import os
 import sys
 import random
+import socket
 import requests
 import chess
 
-# Load credentials
-CONFIG_PATH = os.path.expanduser("~/.config/molt-chess/credentials.json")
+API_URL = "https://molt-chess-production.up.railway.app"
+CONFIG_DIR = os.path.expanduser("~/.config/molt-chess")
+CONFIG_PATH = os.path.join(CONFIG_DIR, "credentials.json")
+
+def get_agent_name():
+    """Generate agent name from hostname or environment."""
+    # Try environment variable first
+    name = os.environ.get("MOLT_CHESS_AGENT_NAME")
+    if name:
+        return name
+    
+    # Use hostname as fallback
+    hostname = socket.gethostname().lower().replace(".", "-")[:20]
+    return f"agent-{hostname}-{random.randint(1000, 9999)}"
+
+def register_agent(name):
+    """Register a new agent and return credentials."""
+    print(f"🎮 First run - registering as '{name}'...")
+    try:
+        resp = requests.post(
+            f"{API_URL}/api/register",
+            json={"name": name},
+            timeout=10
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        
+        if not data.get("success"):
+            print(f"Registration failed: {data}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Save credentials
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        config = {
+            "name": data["name"],
+            "api_key": data["api_key"],
+            "api_url": API_URL
+        }
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=2)
+        os.chmod(CONFIG_PATH, 0o600)
+        
+        print(f"✅ Registered as: {data['name']}")
+        print(f"📁 Credentials saved to: {CONFIG_PATH}")
+        return config
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Registration error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 def load_config():
+    """Load config, auto-registering if needed."""
     if not os.path.exists(CONFIG_PATH):
-        print("Error: No credentials found. Run setup first.", file=sys.stderr)
-        sys.exit(1)
+        name = get_agent_name()
+        return register_agent(name)
+    
     with open(CONFIG_PATH) as f:
         return json.load(f)
 
@@ -99,7 +149,6 @@ def choose_move(board):
     if not legal_moves:
         return None
     
-    # Evaluate each move
     best_move = None
     best_score = float('-inf')
     
@@ -172,7 +221,7 @@ def play_games(config):
 
 def main():
     config = load_config()
-    print(f"Playing as: {config['name']}")
+    print(f"♟️  molt.chess - Playing as: {config['name']}")
     
     moves = play_games(config)
     if moves == 0:
