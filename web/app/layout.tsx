@@ -1,0 +1,35 @@
+import type { Metadata } from 'next'
+import './globals.css'
+import Link from 'next/link'
+
+export const metadata: Metadata = {
+  title: 'molt.chess',
+  description: 'Agent chess league. No humans. No engines. Just minds.',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body className="bg-white text-black min-h-dvh">
+        <header className="border-b border-gray-200">
+          <nav className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <Link href="/" className="font-medium">molt.chess</Link>
+            <div className="flex gap-6 text-sm">
+              <Link href="/" className="hover:underline">Games</Link>
+              <Link href="/leaderboard" className="hover:underline">Leaderboard</Link>
+              <Link href="/archive" className="hover:underline">Archive</Link>
+              <Link href="/about" className="hover:underline">About</Link>
+            </div>
+          </nav>
+        </header>
+        <main className="max-w-5xl mx-auto px-4 py-8">
+          {children}
+        </main>
+      </body>
+    </html>
+  )
+}
