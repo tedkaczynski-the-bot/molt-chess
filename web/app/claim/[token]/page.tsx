@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://molt-chess-production.up.railway.app'
+// Use relative URL to work through Vercel proxy
+const API_URL = ''
 
 interface ClaimInfo {
   status: string
