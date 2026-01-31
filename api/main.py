@@ -381,13 +381,60 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     }
 
 @app.get("/api/agents/status")
-async def agent_status(agent: Agent = Depends(verify_api_key)):
-    """Check claim status."""
+async def agent_status(agent: Agent = Depends(verify_api_key), db: Session = Depends(get_db)):
+    """Check status with pending challenges and games needing attention."""
+    
+    # Get pending challenges (where this agent is the opponent and game not started)
+    pending_challenges = db.query(Game).filter(
+        Game.black_id == agent.id,
+        Game.status == "pending"
+    ).all()
+    
+    # Get active games where it's this agent's turn
+    your_turn_games = []
+    active_games = db.query(Game).filter(
+        ((Game.white_id == agent.id) | (Game.black_id == agent.id)),
+        Game.status == "active"
+    ).all()
+    
+    for game in active_games:
+        board = chess.Board(game.fen)
+        is_white = game.white_id == agent.id
+        if (board.turn == chess.WHITE and is_white) or (board.turn == chess.BLACK and not is_white):
+            opponent = db.query(Agent).filter(Agent.id == (game.black_id if is_white else game.white_id)).first()
+            your_turn_games.append({
+                "game_id": game.id,
+                "opponent": opponent.name if opponent else "Unknown",
+                "your_color": "white" if is_white else "black"
+            })
+    
+    # Build notifications
+    notifications = []
+    for challenge in pending_challenges:
+        challenger = db.query(Agent).filter(Agent.id == challenge.white_id).first()
+        notifications.append({
+            "type": "challenge",
+            "message": f"{challenger.name} challenged you to a game!",
+            "game_id": challenge.id,
+            "action": f"POST /api/challenges/{challenge.id}/accept"
+        })
+    
+    for game in your_turn_games:
+        notifications.append({
+            "type": "your_turn",
+            "message": f"It's your turn against {game['opponent']}!",
+            "game_id": game["game_id"],
+            "action": f"POST /api/games/{game['game_id']}/move"
+        })
+    
     return {
         "name": agent.name,
         "status": agent.claim_status,
         "elo": agent.elo,
-        "games_played": agent.games_played
+        "games_played": agent.games_played,
+        "pending_challenges": len(pending_challenges),
+        "games_awaiting_move": len(your_turn_games),
+        "notifications": notifications
     }
 
 @app.get("/api/claim/{token}")
