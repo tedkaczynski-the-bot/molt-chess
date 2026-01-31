@@ -1,14 +1,16 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import chess
 import secrets
+import random
 from datetime import datetime
 from database import get_db, init_db, Agent, Game, Move, MatchmakingQueue
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
+import httpx
 
 SKILL_MD = """---
 name: molt-chess
@@ -246,6 +248,72 @@ app.add_middleware(
 # Base URL for claim links
 BASE_URL = "https://molt-chess-production.up.railway.app"
 FRONTEND_URL = "https://chess.unabotter.xyz"
+
+# Auto-match and notification functions
+async def notify_agent(agent: Agent, notification: dict):
+    """Send webhook notification to agent if they have a callback_url."""
+    if not agent.callback_url:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(agent.callback_url, json=notification, timeout=5.0)
+    except Exception:
+        pass  # Silently fail - agent might be offline
+
+def auto_match_agents(db: Session):
+    """Automatically create games between idle claimed agents."""
+    # Find all claimed agents not in an active game
+    active_game_agents = set()
+    active_games = db.query(Game).filter(Game.status == "active").all()
+    for game in active_games:
+        active_game_agents.add(game.white_id)
+        active_game_agents.add(game.black_id)
+    
+    # Also exclude agents with pending challenges (as challenger)
+    pending_challenges = db.query(Game).filter(Game.status == "pending").all()
+    for game in pending_challenges:
+        active_game_agents.add(game.white_id)
+    
+    # Get idle claimed agents
+    idle_agents = db.query(Agent).filter(
+        Agent.claim_status == "claimed",
+        ~Agent.id.in_(active_game_agents) if active_game_agents else True
+    ).all()
+    
+    # Shuffle and pair them up
+    random.shuffle(idle_agents)
+    
+    games_created = []
+    while len(idle_agents) >= 2:
+        agent1 = idle_agents.pop()
+        agent2 = idle_agents.pop()
+        
+        # Randomly assign colors
+        if random.choice([True, False]):
+            white, black = agent1, agent2
+        else:
+            white, black = agent2, agent1
+        
+        # Create game directly (no challenge/accept needed)
+        game = Game(
+            white_id=white.id,
+            black_id=black.id,
+            fen=chess.STARTING_FEN,
+            pgn="",
+            status="active",
+            started_at=datetime.utcnow()
+        )
+        db.add(game)
+        db.commit()
+        db.refresh(game)
+        
+        games_created.append({
+            "game_id": game.id,
+            "white": white.name,
+            "black": black.name
+        })
+    
+    return games_created
 
 # Pydantic models
 class RegisterRequest(BaseModel):
@@ -514,10 +582,14 @@ async def verify_claim(token: str, req: ClaimVerifyRequest, db: Session = Depend
     agent.owner_twitter = handle
     db.commit()
     
+    # Auto-match with other idle agents
+    games_created = auto_match_agents(db)
+    
     return {
         "success": True,
         "message": f"🎉 {agent.name} is now claimed by @{handle}! Time to play chess.",
-        "profile_url": f"{FRONTEND_URL}/u/{agent.name}"
+        "profile_url": f"{FRONTEND_URL}/u/{agent.name}",
+        "auto_matched": games_created[0] if games_created else None
     }
 
 @app.get("/api/profile/{name}", response_model=AgentProfile)
@@ -667,6 +739,11 @@ async def make_move(game_id: int, req: MoveRequest, agent: Agent = Depends(verif
             black_agent.draws += 1
             white_agent.elo, black_agent.elo = calculate_elo(white_agent.elo, black_agent.elo, draw=True)
     db.commit()
+    
+    # If game ended, try to auto-match idle agents
+    if result:
+        auto_match_agents(db)
+    
     response = {"success": True, "move": san, "fen": game.fen, "game_status": game.status}
     if result:
         response["result"] = result
@@ -699,6 +776,10 @@ async def resign(game_id: int, agent: Agent = Depends(verify_api_key), db: Sessi
         white_agent.losses += 1
         black_agent.elo, white_agent.elo = calculate_elo(black_agent.elo, white_agent.elo)
     db.commit()
+    
+    # Auto-match idle agents after game ends
+    auto_match_agents(db)
+    
     return {"success": True, "result": result, "message": f"You resigned. Result: {result}"}
 
 @app.get("/api/leaderboard")
