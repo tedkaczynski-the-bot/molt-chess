@@ -3,14 +3,35 @@ from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from contextlib import asynccontextmanager
 import chess
 import secrets
 import random
+import asyncio
 from datetime import datetime
-from database import get_db, init_db, Agent, Game, Move, MatchmakingQueue
+from database import get_db, init_db, Agent, Game, Move, MatchmakingQueue, SessionLocal
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 import httpx
+
+# Background scheduler task
+async def run_maintenance_loop():
+    """Background task that runs maintenance every 5 minutes."""
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                forfeited = check_game_timeouts(db)
+                if forfeited:
+                    print(f"[CRON] Forfeited {len(forfeited)} games: {forfeited}")
+                matched = auto_match_agents(db)
+                if matched:
+                    print(f"[CRON] Created {len(matched)} new games: {matched}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[CRON] Error in maintenance: {e}")
+        await asyncio.sleep(300)  # 5 minutes
 
 SKILL_MD = """---
 name: molt-chess
@@ -272,30 +293,42 @@ async def notify_agent(agent: Agent, notification: dict):
         pass  # Silently fail - agent might be offline
 
 def check_game_timeouts(db: Session):
-    """Check for games where time has expired and forfeit the slow player."""
+    """Check for games where time has expired and forfeit the slow player.
+    
+    Timeout rules:
+    - Early game (< 2 moves total): 15 minute timeout to catch abandoned games
+    - Normal play (>= 2 moves): 24 hour timeout (or game's time_control)
+    """
     from datetime import timedelta
     
     active_games = db.query(Game).filter(Game.status == "active").all()
     forfeited = []
     
     for game in active_games:
-        # Get the last move time or game start time
+        # Get move count and last action time
+        move_count = db.query(Move).filter(Move.game_id == game.id).count()
         last_move = db.query(Move).filter(Move.game_id == game.id).order_by(desc(Move.timestamp)).first()
         last_action_time = last_move.timestamp if last_move else game.started_at
         
         if not last_action_time:
             continue
-            
-        # Parse time control (default 24h)
-        hours = 24
-        if game.time_control:
-            try:
-                hours = int(game.time_control.replace("h", ""))
-            except:
-                hours = 24
+        
+        # Early game abandonment: 15 minutes if < 2 moves
+        if move_count < 2:
+            time_limit = timedelta(minutes=15)
+            timeout_reason = "early_abandonment"
+        else:
+            # Normal time control (default 24h)
+            hours = 24
+            if game.time_control:
+                try:
+                    hours = int(game.time_control.replace("h", ""))
+                except:
+                    hours = 24
+            time_limit = timedelta(hours=hours)
+            timeout_reason = "timeout"
         
         # Check if time expired
-        time_limit = timedelta(hours=hours)
         if datetime.utcnow() - last_action_time > time_limit:
             # Determine who's turn it is and forfeit them
             board = chess.Board(game.fen)
@@ -326,7 +359,7 @@ def check_game_timeouts(db: Session):
                 "game_id": game.id,
                 "winner": winner.name,
                 "loser": loser.name,
-                "reason": "timeout"
+                "reason": timeout_reason
             })
     
     if forfeited:
@@ -468,6 +501,9 @@ async def verify_api_key(x_api_key: str = Header(...), db: Session = Depends(get
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Start background maintenance loop (timeouts + auto-matching)
+    asyncio.create_task(run_maintenance_loop())
+    print("[STARTUP] Background maintenance loop started (runs every 5 min)")
 
 @app.get("/")
 async def root():

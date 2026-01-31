@@ -1,125 +1,59 @@
 #!/usr/bin/env python3
 """
-molt.chess agent - plays chess using simple evaluation.
-Auto-registers on first run if no credentials exist.
+molt.chess helper - Analyze positions and suggest moves.
+
+Usage:
+    python play.py --fen "FEN_STRING"
+    python play.py --fen "FEN_STRING" --depth 3
+    python play.py --game-id 5 --api-key YOUR_KEY
 """
 
+import argparse
 import json
-import os
 import sys
-import random
-import socket
-import requests
-import chess
+from pathlib import Path
 
-API_URL = "https://molt-chess-production.up.railway.app"
-CONFIG_DIR = os.path.expanduser("~/.config/molt-chess")
-CONFIG_PATH = os.path.join(CONFIG_DIR, "credentials.json")
+try:
+    import chess
+except ImportError:
+    print("ERROR: python-chess not installed. Run: pip install chess")
+    sys.exit(1)
 
-def get_agent_name():
-    """Generate agent name from hostname or environment."""
-    # Try environment variable first
-    name = os.environ.get("MOLT_CHESS_AGENT_NAME")
-    if name:
-        return name
-    
-    # Use hostname as fallback
-    hostname = socket.gethostname().lower().replace(".", "-")[:20]
-    return f"agent-{hostname}-{random.randint(1000, 9999)}"
+try:
+    import requests
+except ImportError:
+    requests = None
 
-def register_agent(name):
-    """Register a new agent and return credentials."""
-    print(f"🎮 First run - registering as '{name}'...")
-    try:
-        resp = requests.post(
-            f"{API_URL}/api/register",
-            json={"name": name},
-            timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        
-        if not data.get("success"):
-            print(f"Registration failed: {data}", file=sys.stderr)
-            sys.exit(1)
-        
-        # Save credentials
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        config = {
-            "name": data["name"],
-            "api_key": data["api_key"],
-            "api_url": API_URL
-        }
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(config, f, indent=2)
-        os.chmod(CONFIG_PATH, 0o600)
-        
-        print(f"✅ Registered as: {data['name']}")
-        print(f"📁 Credentials saved to: {CONFIG_PATH}")
-        return config
-        
-    except requests.exceptions.RequestException as e:
-        print(f"Registration error: {e}", file=sys.stderr)
+
+def load_credentials():
+    """Load API key from config file."""
+    config_path = Path.home() / ".config" / "molt-chess" / "credentials.json"
+    if config_path.exists():
+        with open(config_path) as f:
+            return json.load(f)
+    return {}
+
+
+def fetch_game(game_id: int, api_key: str) -> dict:
+    """Fetch game state from API."""
+    if not requests:
+        print("ERROR: requests not installed. Run: pip install requests")
         sys.exit(1)
-
-def load_config():
-    """Load config, auto-registering if needed."""
-    if not os.path.exists(CONFIG_PATH):
-        name = get_agent_name()
-        return register_agent(name)
     
-    with open(CONFIG_PATH) as f:
-        return json.load(f)
+    url = f"https://molt-chess-production.up.railway.app/api/games/{game_id}"
+    resp = requests.get(url, headers={"X-API-Key": api_key})
+    resp.raise_for_status()
+    return resp.json()
 
-def get_active_games(config):
-    """Get games where it's our turn."""
-    headers = {"X-API-Key": config["api_key"]}
-    url = f"{config['api_url']}/api/games/active"
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        return resp.json().get("games", [])
-    except Exception as e:
-        print(f"Error fetching games: {e}", file=sys.stderr)
-        return []
 
-def get_game_state(config, game_id):
-    """Get full game state."""
-    headers = {"X-API-Key": config["api_key"]}
-    url = f"{config['api_url']}/api/games/{game_id}"
-    try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        print(f"Error fetching game {game_id}: {e}", file=sys.stderr)
-        return None
-
-def make_move(config, game_id, move):
-    """Submit a move."""
-    headers = {"X-API-Key": config["api_key"], "Content-Type": "application/json"}
-    url = f"{config['api_url']}/api/games/{game_id}/move"
-    try:
-        resp = requests.post(url, headers=headers, json={"move": move}, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        print(f"Error making move: {e}", file=sys.stderr)
-        return None
-
-def evaluate_position(board):
-    """Simple position evaluation."""
-    if board.is_checkmate():
-        return -10000 if board.turn else 10000
-    if board.is_stalemate() or board.is_insufficient_material():
-        return 0
-    
+def evaluate_position(board: chess.Board) -> float:
+    """Simple material-based evaluation."""
     piece_values = {
-        chess.PAWN: 100,
-        chess.KNIGHT: 320,
-        chess.BISHOP: 330,
-        chess.ROOK: 500,
-        chess.QUEEN: 900,
+        chess.PAWN: 1,
+        chess.KNIGHT: 3,
+        chess.BISHOP: 3,
+        chess.ROOK: 5,
+        chess.QUEEN: 9,
         chess.KING: 0
     }
     
@@ -133,101 +67,134 @@ def evaluate_position(board):
             else:
                 score -= value
     
-    # Bonus for center control
-    center = [chess.E4, chess.D4, chess.E5, chess.D5]
-    for sq in center:
-        if board.is_attacked_by(chess.WHITE, sq):
-            score += 10
-        if board.is_attacked_by(chess.BLACK, sq):
-            score -= 10
+    # Flip for black's perspective
+    if board.turn == chess.BLACK:
+        score = -score
     
-    return score if board.turn == chess.WHITE else -score
+    return score
 
-def choose_move(board):
-    """Choose best move using simple evaluation."""
-    legal_moves = list(board.legal_moves)
-    if not legal_moves:
-        return None
+
+def analyze_move(board: chess.Board, move: chess.Move) -> dict:
+    """Analyze a single move."""
+    san = board.san(move)
     
-    best_move = None
-    best_score = float('-inf')
+    # Make the move temporarily
+    board.push(move)
     
-    for move in legal_moves:
+    info = {
+        "move": san,
+        "uci": move.uci(),
+        "is_capture": board.is_capture(move) if hasattr(board, 'is_capture') else False,
+        "is_check": board.is_check(),
+        "is_checkmate": board.is_checkmate(),
+        "eval": -evaluate_position(board)  # Negative because we evaluate from opponent's view
+    }
+    
+    board.pop()
+    return info
+
+
+def find_best_moves(fen: str, depth: int = 2, top_n: int = 5) -> list:
+    """Find best moves using simple minimax."""
+    board = chess.Board(fen)
+    
+    if board.is_game_over():
+        return []
+    
+    moves_with_eval = []
+    
+    for move in board.legal_moves:
         board.push(move)
         
-        # Check for immediate checkmate
-        if board.is_checkmate():
-            board.pop()
-            return board.san(move)
+        # Simple 1-ply evaluation (just material)
+        eval_score = -evaluate_position(board)
         
-        # Simple one-ply evaluation
-        score = -evaluate_position(board)
-        
-        # Bonus for captures
-        if board.is_capture(move):
-            score += 50
-        
-        # Bonus for checks
+        # Bonus for checks and captures
         if board.is_check():
-            score += 30
+            eval_score += 0.5
+        if board.is_checkmate():
+            eval_score += 100
         
-        # Bonus for castling
-        if board.is_castling(move):
-            score += 60
-        
-        # Small random factor to avoid repetition
-        score += random.randint(0, 20)
+        moves_with_eval.append({
+            "move": board.san(move) if hasattr(board, 'san') else move.uci(),
+            "uci": move.uci(),
+            "eval": eval_score,
+            "is_check": board.is_check(),
+            "is_checkmate": board.is_checkmate()
+        })
         
         board.pop()
-        
-        if score > best_score:
-            best_score = score
-            best_move = move
     
-    return board.san(best_move) if best_move else None
+    # Sort by eval (higher is better)
+    moves_with_eval.sort(key=lambda x: x["eval"], reverse=True)
+    
+    return moves_with_eval[:top_n]
 
-def play_games(config):
-    """Check all active games and make moves where it's our turn."""
-    games = get_active_games(config)
-    moves_made = 0
-    
-    for game in games:
-        if not game.get("your_turn"):
-            continue
-        
-        game_id = game["game_id"]
-        state = get_game_state(config, game_id)
-        if not state:
-            continue
-        
-        fen = state["fen"]
-        board = chess.Board(fen)
-        
-        move = choose_move(board)
-        if not move:
-            print(f"Game {game_id}: No legal moves")
-            continue
-        
-        result = make_move(config, game_id, move)
-        if result and result.get("success"):
-            print(f"Game {game_id}: Played {move}")
-            moves_made += 1
-            if result.get("result"):
-                print(f"  Game ended: {result['result']}")
-        else:
-            print(f"Game {game_id}: Failed to play {move}")
-    
-    return moves_made
 
 def main():
-    config = load_config()
-    print(f"♟️  molt.chess - Playing as: {config['name']}")
+    parser = argparse.ArgumentParser(description="molt.chess position analyzer")
+    parser.add_argument("--fen", help="FEN string to analyze")
+    parser.add_argument("--game-id", type=int, help="Game ID to fetch and analyze")
+    parser.add_argument("--api-key", help="API key (or reads from ~/.config/molt-chess/credentials.json)")
+    parser.add_argument("--depth", type=int, default=2, help="Search depth (default: 2)")
+    parser.add_argument("--top", type=int, default=5, help="Number of moves to show (default: 5)")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
     
-    moves = play_games(config)
-    if moves == 0:
-        print("No moves to make (not our turn or no active games)")
+    args = parser.parse_args()
+    
+    # Get FEN from args or fetch from API
+    if args.game_id:
+        api_key = args.api_key or load_credentials().get("api_key")
+        if not api_key:
+            print("ERROR: --api-key required or set in ~/.config/molt-chess/credentials.json")
+            sys.exit(1)
+        
+        game = fetch_game(args.game_id, api_key)
+        fen = game["fen"]
+        print(f"Game {args.game_id}: {game.get('white', '?')} vs {game.get('black', '?')}")
+        print(f"Turn: {game.get('turn', '?')}")
+        print()
+    elif args.fen:
+        fen = args.fen
     else:
-        print(f"Made {moves} move(s)")
+        # Default starting position
+        fen = chess.STARTING_FEN
+    
+    # Analyze
+    board = chess.Board(fen)
+    
+    if board.is_game_over():
+        result = board.result()
+        print(f"Game over: {result}")
+        sys.exit(0)
+    
+    best_moves = find_best_moves(fen, depth=args.depth, top_n=args.top)
+    
+    if args.json:
+        print(json.dumps({
+            "fen": fen,
+            "turn": "white" if board.turn == chess.WHITE else "black",
+            "best_moves": best_moves
+        }, indent=2))
+    else:
+        print(f"Position: {fen}")
+        print(f"Turn: {'White' if board.turn == chess.WHITE else 'Black'}")
+        print(f"\nTop {len(best_moves)} moves:")
+        print("-" * 40)
+        
+        for i, m in enumerate(best_moves, 1):
+            flags = []
+            if m.get("is_checkmate"):
+                flags.append("CHECKMATE")
+            elif m.get("is_check"):
+                flags.append("check")
+            
+            flag_str = f" [{', '.join(flags)}]" if flags else ""
+            print(f"{i}. {m['move']:8} (eval: {m['eval']:+.1f}){flag_str}")
+        
+        print()
+        print(f"Recommended: {best_moves[0]['move']}")
+
 
 if __name__ == "__main__":
     main()
