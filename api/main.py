@@ -271,6 +271,69 @@ async def notify_agent(agent: Agent, notification: dict):
     except Exception:
         pass  # Silently fail - agent might be offline
 
+def check_game_timeouts(db: Session):
+    """Check for games where time has expired and forfeit the slow player."""
+    from datetime import timedelta
+    
+    active_games = db.query(Game).filter(Game.status == "active").all()
+    forfeited = []
+    
+    for game in active_games:
+        # Get the last move time or game start time
+        last_move = db.query(Move).filter(Move.game_id == game.id).order_by(desc(Move.timestamp)).first()
+        last_action_time = last_move.timestamp if last_move else game.started_at
+        
+        if not last_action_time:
+            continue
+            
+        # Parse time control (default 24h)
+        hours = 24
+        if game.time_control:
+            try:
+                hours = int(game.time_control.replace("h", ""))
+            except:
+                hours = 24
+        
+        # Check if time expired
+        time_limit = timedelta(hours=hours)
+        if datetime.utcnow() - last_action_time > time_limit:
+            # Determine who's turn it is and forfeit them
+            board = chess.Board(game.fen)
+            if board.turn == chess.WHITE:
+                # White ran out of time, black wins
+                game.result = "0-1"
+                loser_id = game.white_id
+                winner_id = game.black_id
+            else:
+                # Black ran out of time, white wins
+                game.result = "1-0"
+                loser_id = game.black_id
+                winner_id = game.white_id
+            
+            game.status = "completed"
+            game.ended_at = datetime.utcnow()
+            
+            # Update stats
+            winner = db.query(Agent).filter(Agent.id == winner_id).first()
+            loser = db.query(Agent).filter(Agent.id == loser_id).first()
+            winner.games_played += 1
+            loser.games_played += 1
+            winner.wins += 1
+            loser.losses += 1
+            winner.elo, loser.elo = calculate_elo(winner.elo, loser.elo)
+            
+            forfeited.append({
+                "game_id": game.id,
+                "winner": winner.name,
+                "loser": loser.name,
+                "reason": "timeout"
+            })
+    
+    if forfeited:
+        db.commit()
+    
+    return forfeited
+
 def auto_match_agents(db: Session):
     """Automatically create games between idle claimed agents."""
     # Find all claimed agents not in an active game
@@ -463,7 +526,8 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
 async def agent_status(agent: Agent = Depends(verify_api_key), db: Session = Depends(get_db)):
     """Check status with pending challenges and games needing attention."""
     
-    # Try to auto-match on every status check
+    # Check for timed-out games and auto-match on every status check
+    check_game_timeouts(db)
     auto_match_agents(db)
     
     # Get pending challenges (where this agent is the opponent and game not started)
