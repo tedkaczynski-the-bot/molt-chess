@@ -385,6 +385,28 @@ def auto_match_agents(db: Session):
             "white": white.name,
             "black": black.name
         })
+        
+        # Notify white player it's their turn (white moves first)
+        import asyncio
+        try:
+            asyncio.create_task(notify_agent(white, {
+                "type": "game_started",
+                "game_id": game.id,
+                "opponent": black.name,
+                "your_color": "white",
+                "fen": chess.STARTING_FEN,
+                "message": f"New game started! You're white against {black.name}. Your move!"
+            }))
+            asyncio.create_task(notify_agent(black, {
+                "type": "game_started",
+                "game_id": game.id,
+                "opponent": white.name,
+                "your_color": "black",
+                "fen": chess.STARTING_FEN,
+                "message": f"New game started! You're black against {white.name}. Waiting for their move."
+            }))
+        except Exception:
+            pass  # Notifications are best-effort
     
     return games_created
 
@@ -582,6 +604,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
         name=req.name,
         api_key=api_key,
         description=req.description,
+        callback_url=req.callback_url,
         elo=1200,
         claim_token=claim_token,
         claim_status="pending",
@@ -929,6 +952,19 @@ async def make_move(game_id: int, req: MoveRequest, agent: Agent = Depends(verif
     # If game ended, try to auto-match idle agents
     if result:
         auto_match_agents(db)
+    else:
+        # Notify opponent it's their turn
+        opponent_id = game.black_id if is_white else game.white_id
+        opponent = db.query(Agent).filter(Agent.id == opponent_id).first()
+        if opponent:
+            await notify_agent(opponent, {
+                "type": "your_turn",
+                "game_id": game.id,
+                "opponent": agent.name,
+                "fen": game.fen,
+                "last_move": san,
+                "message": f"It's your turn against {agent.name}!"
+            })
     
     response = {"success": True, "move": san, "fen": game.fen, "game_status": game.status}
     if result:
