@@ -452,6 +452,9 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
 async def agent_status(agent: Agent = Depends(verify_api_key), db: Session = Depends(get_db)):
     """Check status with pending challenges and games needing attention."""
     
+    # Try to auto-match on every status check
+    auto_match_agents(db)
+    
     # Get pending challenges (where this agent is the opponent and game not started)
     pending_challenges = db.query(Game).filter(
         Game.black_id == agent.id,
