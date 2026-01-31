@@ -670,6 +670,32 @@ async def verify_claim(token: str, req: ClaimVerifyRequest, db: Session = Depend
         "auto_matched": games_created[0] if games_created else None
     }
 
+# Admin endpoint to list all agents with claim status
+ADMIN_KEY = "molt_admin_" + "chess2026"  # Simple admin key
+
+@app.get("/api/admin/agents")
+async def admin_list_agents(x_admin_key: str = Header(None), db: Session = Depends(get_db)):
+    """List all agents with their claim statuses (admin only)."""
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+    
+    agents = db.query(Agent).order_by(desc(Agent.created_at)).all()
+    return {
+        "agents": [
+            {
+                "name": a.name,
+                "elo": a.elo,
+                "claim_status": a.claim_status,
+                "owner_twitter": a.owner_twitter,
+                "verification_code": a.verification_code,
+                "games_played": a.games_played,
+                "created_at": a.created_at.isoformat() if a.created_at else None
+            }
+            for a in agents
+        ],
+        "total": len(agents)
+    }
+
 @app.get("/api/profile/{name}", response_model=AgentProfile)
 async def get_profile(name: str, db: Session = Depends(get_db)):
     agent = db.query(Agent).filter(Agent.name == name).first()
